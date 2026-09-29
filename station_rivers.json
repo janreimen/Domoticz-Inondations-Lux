@@ -1,0 +1,18 @@
+{
+  "Alzette": ["Ettelbrück", "Hesperange", "Livange", "Mersch", "Pfaffenthal", "Steinsel", "Walferdange"],
+  "Attert": ["Bissen", "Reichlange"],
+  "Chiers": ["Pétange"],
+  "Clerve": ["Clervaux", "Troisvierges"],
+  "Eisch": ["Eischen", "Hunnebuer"],
+  "Ernz Blanche": ["Larochette"],
+  "Ernz Noire": ["Müllerthal"],
+  "Gander": ["Mondorf-les-bains"],
+  "Mamer": ["Schoenfels"],
+  "Moselle": ["Grevenmacher", "Perl", "Remich", "Stadtbredimus", "Wasserbillig"],
+  "Our": ["Dasbourg", "Gemünd", "Vianden"],
+  "Sûre": ["Bigonville", "Bollendorf", "Diekirch", "Esch-Sure", "Heiderscheidergrund", "Michelau", "Rosport"],
+  "Syre": ["Mertert", "Roodt sur Syre", {"name": "Uebersyren", "aliases": ["Ubersyren"]}],
+  "Wark": ["Ettelbrück", "Niederfeulen", "Welscheid", {"name": "Welscheid (Village)", "aliases": ["Welscheid-Village"]}],
+  "Wiltz": ["Kautenbach", "Wiltz"]
+}
+
