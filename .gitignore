@@ -11,7 +11,7 @@ checklist.md
 # Runtime state (per install, never commit)
 station_units.json
 station_units.json.tmp
-
+*.*.*.*.py
 # Local configuration (.env.sample stays tracked)
 .env
 .env.*
