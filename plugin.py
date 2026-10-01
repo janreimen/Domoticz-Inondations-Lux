@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-<plugin key="InondationsLux" name="Luxembourg River Levels (inondations.lu)" author="Jan Reimen" version="0.1.1" externallink="https://github.com/janreimen/Domoticz-Inondations-Lux">
+<plugin key="InondationsLux" name="Luxembourg River Levels (inondations.lu)" author="Jan Reimen" version="0.1.2" externallink="https://github.com/janreimen/Domoticz-Inondations-Lux">
 
     <description>
         <h2>Domoticz-Inondations-Lux</h2>
@@ -37,6 +37,10 @@
             <li>Debug: cumulative bitmask controlling the categories of diagnostic logging.
             "All" enables all debug categories including full plugin operational logging.</li>
         </ul>
+
+        <p>Station devices are refreshed on every successful poll, even when the measured
+        water level has not changed. This keeps Domoticz's LastUpdate timestamp aligned
+        with successful source refreshes.</p>
     </description>
 
     <params>
@@ -63,7 +67,6 @@
         <param field="Mode6" label="Debug" width="300px">
             <options>
                 <option label="None" value="0" default="true"/>
-
                 <option label="Basic" value="1"/>
                 <option label="Python" value="2"/>
                 <option label="Connection" value="4"/>
@@ -77,12 +80,10 @@
                 <option label="Python + Queue" value="18"/>
                 <option label="Connection + Messages" value="12"/>
                 <option label="Messages + Queue" value="24"/>
-
                 <option label="Python + Connection + Messages" value="14"/>
                 <option label="Python + Connection + Queue" value="22"/>
                 <option label="Python + Messages + Queue" value="26"/>
                 <option label="Connection + Messages + Queue" value="28"/>
-
                 <option label="Python + Connection + Messages + Queue" value="30"/>
 
                 <option label="All" value="63"/>
@@ -151,7 +152,7 @@ from utils import parse_name_filter
 #
 # The plugin uses the selected mask for its own diagnostic logging.
 # Domoticz.Debugging() is also configured with the selected mask.
-#
+# ============================================================================
 
 DEBUG_BASIC = 1
 DEBUG_PYTHON = 2
@@ -171,8 +172,11 @@ DEBUG_ALL = (
 
 
 class InondationsPlugin:
-    """Holds all plugin state; plugin.py's module-level functions below
-    are just the Domoticz callback contract delegating into this class.
+    """
+    Holds all plugin state.
+
+    The module-level functions at the bottom of this file are only the
+    Domoticz callback contract and delegate into this class.
     """
 
     def __init__(self):
@@ -212,7 +216,8 @@ class InondationsPlugin:
             Domoticz.Debug(message)
 
     def operational(self, message):
-        """Emit detailed plugin operational logging.
+        """
+        Emit detailed plugin operational logging.
 
         Operational logging is deliberately a separate bit so that
         'All' provides a complete execution trace without requiring
@@ -237,7 +242,9 @@ class InondationsPlugin:
         # --------------------------------------------------------------------
 
         try:
-            self.debug_mask = int(Parameters.get("Mode6", "0"))
+            self.debug_mask = int(
+                Parameters.get("Mode6", "0")
+            )
         except (ValueError, TypeError):
             self.debug_mask = 0
 
@@ -307,6 +314,7 @@ class InondationsPlugin:
                 f"Unknown data source '{selected}', "
                 f"falling back to '{DEFAULT_DATA_SOURCE}'"
             )
+
             selected = DEFAULT_DATA_SOURCE
 
         self.data_source = selected
@@ -328,6 +336,7 @@ class InondationsPlugin:
                 f"Unknown device naming '{naming}', "
                 f"falling back to '{DEFAULT_NAMING}'"
             )
+
             naming = DEFAULT_NAMING
 
         self.device_naming = naming
@@ -356,8 +365,8 @@ class InondationsPlugin:
                 )
 
             except RiverTableError as ex:
-                # Names only: safe to carry on, stations just keep
-                # their feed name.
+                # Names only: safe to carry on. Stations simply keep
+                # their feed name when no river mapping is available.
                 Domoticz.Error(
                     f"{ex} - device names will fall back "
                     f"to the feed's own names"
@@ -455,6 +464,12 @@ class InondationsPlugin:
         # Initial poll
         # --------------------------------------------------------------------
 
+        # The first poll is performed immediately during onStart().
+        #
+        # IMPORTANT:
+        # next_poll must be scheduled AFTER the initial poll. Otherwise the
+        # initial value (datetime.now()) remains expired and every 20-second
+        # Domoticz heartbeat would trigger another poll.
         self.next_poll = datetime.now()
 
         self.operational(
@@ -463,6 +478,18 @@ class InondationsPlugin:
         )
 
         self.poll_and_update()
+
+        # Schedule the regular poll interval from completion of the initial
+        # poll, so the normal heartbeat loop does not immediately poll again.
+        self.next_poll = datetime.now() + timedelta(
+            minutes=self.update_interval_minutes
+        )
+
+        self.operational(
+            f"Initial poll completed; "
+            f"next poll scheduled for "
+            f"{self.next_poll:%Y-%m-%d %H:%M:%S}"
+        )
 
     def onStop(self):
         self.debug(
@@ -528,11 +555,9 @@ class InondationsPlugin:
             f"next_poll={self.next_poll:%Y-%m-%d %H:%M:%S}"
         )
 
+        # The heartbeat runs every HEARTBEAT_SECONDS, while actual source
+        # polling is controlled by update_interval_minutes.
         if now < self.next_poll:
-            self.operational(
-                "Heartbeat received but poll interval "
-                "has not expired"
-            )
             return
 
         self.operational(
@@ -561,7 +586,8 @@ class InondationsPlugin:
         )
 
     def fetch_stations(self):
-        """Fetch + parse from whichever source is selected.
+        """
+        Fetch and parse from whichever source is selected.
 
         Both branches return the same Station model, so everything
         downstream is source-agnostic.
@@ -604,6 +630,9 @@ class InondationsPlugin:
             "poll_and_update() started"
         )
 
+        # Never update existing Domoticz devices if the persistent station
+        # unit registry could not be loaded. The registry is what guarantees
+        # stable station -> Domoticz Unit assignments.
         if self.registry is None:
             Domoticz.Error(
                 "Station unit map failed to load at startup - "

@@ -161,6 +161,7 @@ Create a new hardware instance and set:
 * **Device names (CSV source)** — `River - Station (where known)` (default) or the feed's own names. Applied when a device is created; it does not rename existing devices
 * **Update interval (minutes)** — default 15
 * **Station name filter** — optional, empty means all stations
+* **Debug** — bitwise debug mask; `0` disables plugin-specific debug output
 
 ---
 
@@ -213,11 +214,13 @@ After restarting Domoticz:
 6. Check the Domoticz log. At startup it should contain lines like:
 
 ```text
-Starting Luxembourg River Levels (inondations.lu) 0.1.1
+Starting Luxembourg River Levels (inondations.lu) 0.1.2
 Data source: csv (https://inondations.public.lu/dam-assets/ctie/datas/Water-Levels-LocalTime.csv)
 ```
 
 7. Verify that `station_units.json` now exists in the plugin directory. Leave it in place.
+8. After a successful poll, verify that the station device's **LastUpdate** timestamp advances even when its measured value is unchanged. For example, a station remaining at `91.0 cm` is still written to Domoticz at each successful poll.
+9. Verify that **Last successful update** also advances after a successful poll.
 
 A successful installation should show the plugin starting without Python import or configuration errors.
 
@@ -264,7 +267,7 @@ git checkout <VERSION>
 For example:
 
 ```bash
-git checkout 0.1.1
+git checkout 0.1.2
 ```
 
 Restart Domoticz:
@@ -474,6 +477,26 @@ That is the raw upstream feed, not a plugin bug. See `README.md`.
 
 ---
 
+### A station's value has not changed but `LastUpdate` should be current
+
+This is expected behavior in 0.1.2.
+
+The plugin deliberately calls Domoticz `Update()` for every usable station reading on every successful poll. A repeated value such as `91.0 cm` is still a successful new observation, so the station device's `LastUpdate` timestamp advances.
+
+If it does not:
+
+1. Check that the poll itself completed successfully.
+2. Check the station has a usable current value.
+3. Check the Domoticz log for the station's processing message.
+4. Check that the plugin directory contains the expected 0.1.2 code.
+5. Run:
+
+```bash
+python3 tests.py
+```
+
+---
+
 ## 14. Logging and Diagnostics
 
 When diagnosing problems, collect the relevant Domoticz log entries, together with the active data source.
@@ -485,6 +508,26 @@ The plugin handles no credentials, so logs contain none. Still avoid posting int
 ```
 
 before sharing logs.
+
+The plugin's Debug hardware field is a bitwise mask:
+
+```text
+Basic       1
+Python      2
+Connection  4
+Messages    8
+Queue      16
+Operational 32
+All        63
+```
+
+For example:
+
+```text
+Python + Connection + Messages = 14
+```
+
+Operational logging is intended to describe normal plugin lifecycle events. Detailed category-specific diagnostic output is controlled by the selected debug bits.
 
 ---
 
@@ -559,6 +602,7 @@ Before considering a deployment complete:
 * [ ] `station_rivers.json` is present (CSV river names) and the log lists no unexpected "No river known" stations.
 * [ ] Domoticz has been restarted.
 * [ ] Station devices and **Last successful update** appear under **Setup → Devices**.
+* [ ] A station's `LastUpdate` advances on each successful poll even when its value remains unchanged.
 * [ ] `station_units.json` exists in the plugin directory and the directory is persistent.
 * [ ] The startup log shows the expected version and source.
 * [ ] No fetch errors or Python exceptions are present in the Domoticz log.

@@ -12,9 +12,30 @@ The project follows [Semantic Versioning](https://semver.org/) where practical.
 
 # Release History
 
+## [0.1.2] - 2026-10-01
+
+Maintenance release focused on live Domoticz operation, device update semantics, and operational diagnostics.
+
+### Changed
+
+* Station devices are now updated on every successful poll, even when the measured value has not changed.
+* A station device's Domoticz `LastUpdate` timestamp therefore represents the latest successful observation of that station, rather than the last time its value changed.
+* Unit 255 (`Last successful update`) now documents its role explicitly as the timestamp of the latest successful poll.
+* Updated the documentation to describe the current bitwise Debug mask and operational logging categories.
+* Release documentation and examples were updated from `0.1.1` to `0.1.2`.
+
+### Notes
+
+* This change does not alter station values, units, station identity, or the persisted station-to-Unit registry.
+* A repeated value such as `91.0 cm` is still a new successful observation and is therefore written to Domoticz again.
+* Failed source fetches still leave existing station values untouched.
+* Stations without a usable current value are still skipped.
+
+---
+
 ## [0.1.1] - 2026-09-29
 
-Initial release. Reads the Luxembourg river water levels behind www.inondations.lu and exposes one read-only Custom sensor per gauging station. Developed as 0.1.0-alpha; released as 0.1.1 with no alpha version ever made public - see "Changed" below.
+Initial release. Reads the Luxembourg river water levels behind [www.inondations.lu](http://www.inondations.lu) and exposes one read-only Custom sensor per gauging station. Developed as 0.1.0-alpha; released as 0.1.1 with no alpha version ever made public - see "Changed" below.
 
 ### Changed
 
@@ -30,7 +51,7 @@ Initial release. Reads the Luxembourg river water levels behind www.inondations.
 * The station name filter now matches the feed name or the device name, so a river name such as `Moselle` works as a filter.
 * CSV parsing takes the last non-blank cell of a row as the current value, since a station that stopped reporting trails off with blank cells.
 * `registry.py`: persisted station-name to Domoticz-Unit map (`station_units.json`), assigned once per station name and kept stable across restarts. Units 1-254 are used for stations.
-* **Unit 255 - Last successful update**: Text sensor, updated only when a poll updated at least one station.
+* **Unit 255 - Last successful update**: Text sensor, updated only when a successful poll completes.
 * Optional station name filter (case-insensitive substring match against the device name).
 * Configurable update interval (default 15 minutes).
 * Startup log lines with the plugin version and the active source and URL.

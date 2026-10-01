@@ -19,7 +19,7 @@ DATA_SOURCE_CSV = "csv"
 DATA_SOURCE_API = "api"
 DEFAULT_DATA_SOURCE = DATA_SOURCE_CSV
 
-PLUGIN_VERSION = "0.1.1"
+PLUGIN_VERSION = "0.1.2"
 
 # The CSV carries several days of 15-minute history for every station (only the newest reading is used), 
 # so it is much larger than the API response and gets a somewhat generous timeout. CSV mode only: 

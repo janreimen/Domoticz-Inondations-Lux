@@ -27,16 +27,23 @@ class DeviceManager:
         self.devices[LAST_UPDATE_UNIT].Update(nValue=0, sValue=timestamp_str)
 
     def upsert_station(self, station, unit: int) -> bool:
-        """Create the device if it doesn't exist yet, update its value if
-        changed. Returns False (after logging why) if the unit is out of
-        range or the station has no usable current reading.
+        """Create the device if it doesn't exist yet and update its value.
+
+        The device is updated on every successful poll, even when the measured
+        value has not changed. This keeps Domoticz's LastUpdate timestamp aligned
+        with the source polling cycle.
         """
         if not (MIN_UNIT <= unit <= MAX_UNIT):
-            Domoticz.Error(f"Unit {unit} for station '{station.name}' is outside the {MIN_UNIT}-{MAX_UNIT} range, skipped")
+            Domoticz.Error(
+                f"Unit {unit} for station '{station.name}' is outside "
+                f"the {MIN_UNIT}-{MAX_UNIT} range, skipped"
+            )
             return False
 
         if station.current_value is None:
-            Domoticz.Debug(f"No usable current value for station '{station.name}', skipped")
+            Domoticz.Debug(
+                f"No usable current value for station '{station.name}', skipped"
+            )
             return False
 
         if unit not in self.devices:
@@ -47,10 +54,20 @@ class DeviceManager:
                 Options={"Custom": f"1;{station.unit_label}"},
                 DeviceID=f"station_{unit}",
             ).Create()
-            Domoticz.Log(f"Created device '{station.display_name}' for feed station '{station.name}' (Unit {unit}, {station.unit_label})")
+
+            Domoticz.Log(
+                f"Created device '{station.display_name}' for feed station "
+                f"'{station.name}' (Unit {unit}, {station.unit_label})"
+            )
 
         s_value = str(station.current_value)
-        if self.devices[unit].sValue != s_value:
-            self.devices[unit].Update(nValue=0, sValue=s_value)
 
-        return True
+        # Always update the Domoticz device, even when the value is unchanged.
+        # This keeps LastUpdate aligned with the successful source poll.
+        self.devices[unit].Update(
+            nValue=0,
+            sValue=s_value,
+        )
+
+        return True    
+

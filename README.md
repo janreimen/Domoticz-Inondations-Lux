@@ -1,6 +1,6 @@
 # Luxembourg River Levels (inondations.lu) for Domoticz
 
-**Version 0.1.1**
+**Version 0.1.2**
 
 A read-only Domoticz Python plugin that creates one sensor per river-gauging station in Luxembourg, from the official water-level feed behind [www.inondations.lu](https://www.inondations.lu).
 
@@ -12,6 +12,7 @@ A read-only Domoticz Python plugin that creates one sensor per river-gauging sta
 - Per-station unit (cm or m) is read from the feed, not assumed.
 - CSV devices are named `<River> - <Station>` where the river is known. The CSV has no river column, so the river comes from a small bundled table (`station_rivers.json`); unknown stations keep the feed's own name.
 - The current value is the last non-blank reading in a station's row, so a station that stopped reporting recently still shows its newest real value.
+- Every successful station observation is written to Domoticz, even when the value has not changed. This keeps the device's `LastUpdate` timestamp aligned with the latest successful poll.
 - Persisted station-name to Domoticz-Unit registry, so devices stay stable across restarts even though the feed has no station id.
 - "Last successful update" text sensor; a failed fetch never overwrites the last known values.
 - Optional station name filter.
@@ -155,7 +156,7 @@ The plugin configuration fields are:
 | Device names (CSV source) | `River - Station (where known)` (default) or `Name as published in the feed`. Ignored in API mode, which always uses `<River> - <City>` |
 | Update interval (minutes) | Polling interval, default 15; minimum 1 |
 | Station name filter | Optional comma-separated substrings; a station gets a device if its name contains any of them (case-insensitive). Empty means all stations |
-| Debug | Standard Domoticz plugin debug levels; default None |
+| Debug | Bitwise debug mask; default `0` (disabled). See **Logging and diagnostics** below. |
 
 The filter is matched against both the feed name and the device name, so `Alzette` and `Moselle` work in either naming mode: `Moselle` matches `SN_Wasserbillig` (device `Moselle - Wasserbillig`) but only if the river table knows it.
 
@@ -200,10 +201,13 @@ Every later poll and every Domoticz restart reads it back, so a device never jum
 - The device shows the station's newest reading in the unit the feed states for it (`cm` for most stations, `m` for at least one).
 - CSV mode: each row is padded to the same width, but a station that stopped reporting trails off with blank cells. The current value is the last non-blank cell, not literally the last column. A station whose whole row is blank gets no update.
 - API mode: the `current.value` field of the station object.
+- **Every usable station reading is written to Domoticz on every successful poll, even when the numeric/string value is identical to the previous poll.** This deliberately keeps the Domoticz device `LastUpdate` timestamp aligned with the latest successful observation.
 
 ### Unit 255 — Last successful update
 
-Set to the local date and time of the last poll that updated at least one station. It is not touched when a fetch fails or when no station matched the filter, so a stalled feed is visible at a glance.
+Set to the local date and time of the last successful poll. It is not touched when a fetch fails or when no station matched the filter.
+
+The station devices themselves are also updated on every successful poll, so their individual `LastUpdate` timestamps show when that station was last successfully processed, regardless of whether its value changed.
 
 ## Data source behavior
 
@@ -219,6 +223,51 @@ No authentication is used. The only header sent besides the defaults is `User-Ag
 The CSV contains several days of 15-minute history for every station and is downloaded in full on each poll; only the newest reading of each row is used.
 
 There is no retry within a poll. On any network, HTTP, decoding or JSON failure the error is logged, no device is touched, and the next attempt is made after the configured interval. Malformed or blank rows are skipped without aborting the poll.
+
+## Logging and diagnostics
+
+The plugin separates normal operational messages from detailed debug output.
+
+### Operational logging
+
+When the operational logging category is enabled, normal lifecycle messages include:
+
+- heartbeat reception and the next scheduled poll;
+- poll start;
+- source selection and fetch activity;
+- station processing;
+- station creation;
+- successful poll completion;
+- next poll scheduling.
+
+A station update is performed on every successful poll, including unchanged values. Debug output may therefore explicitly report that a station was processed even though its measurement did not change.
+
+### Debug mask
+
+The **Debug** hardware field uses a bitwise cumulative mask. Each category occupies one bit:
+
+| Category | Value |
+|---|---:|
+| Basic | `1` |
+| Python | `2` |
+| Connection | `4` |
+| Messages | `8` |
+| Queue | `16` |
+| Operational | `32` |
+| All | `63` |
+
+Values can be combined with bitwise OR. For example:
+
+```text
+Python + Connection        = 6
+Python + Message           = 10
+Python + Connection + Message = 14
+All                        = 63
+```
+
+`0` disables plugin debug output.
+
+The plugin passes the selected mask to Domoticz's debugging mechanism and additionally uses the individual category bits to decide which plugin-specific debug messages are emitted.
 
 ## Runtime state and repository hygiene
 
@@ -261,11 +310,6 @@ python3 -m py_compile *.py
 
 The suite also checks that the version written in `plugin.py`, `constants.py`, this README, `CHANGELOG.md` and `ROADMAP.md` agree, and that the shipped `.env` and `.env.sample` carry the built-in default URLs.
 
-### Test fixtures
-
-- `fixtures/water_levels_sample.csv` is a small hand-picked sample in the feed's real format, with the awkward real station names (`Esch-Sure` in metres, `SN_Wasserbillig`, `Ettelbrück / Alzette`, `Welscheid-Village`, and `Ubersyren` with trailing blank cells). It is a condensed excerpt (9 timestamp columns instead of several hundred), not a byte-for-byte copy of the live file.
-- `fixtures/rivers_api_sample.json` is a 3-river / 5-station excerpt of the API's real response shape, including a `supplement` case and the mislabelled `Esch-Sure` unit.
-
 ## Project layout
 
 ```text
@@ -274,15 +318,15 @@ csv_client.py         HTTP client for the CSV feed
 api_client.py         HTTP client for the heichwaasser.lu API
 errors.py             Shared SourceFetchError
 env_config.py         .env reader and URL resolution
-stations.py           Domoticz-free parsers (CSV and API) into one Station model
-rivers.py             River lookup for CSV station names (display names only)
+stations.py            Domoticz-free parsers (CSV and API) into one Station model
+rivers.py              River lookup for CSV station names (display names only)
 station_rivers.json   River to stations table used by rivers.py
-registry.py           Persisted station-name to Domoticz-Unit map
-devices.py            All Domoticz device create/update logic
+registry.py            Persisted station-name to Domoticz-Unit map
+devices.py             All Domoticz device create/update logic
 constants.py          Version, default URLs and shared constants
 utils.py              Small stateless helpers
 tests.py              Offline test suite
-fixtures/             Sample CSV and API payload used by tests.py
+fixtures/              Sample CSV and API payload used by tests.py
 .env / .env.sample    Data source URLs (local copy / tracked template)
 ```
 
@@ -295,15 +339,15 @@ python3 tests.py
 git status --short --ignored
 git add .
 git status
-git commit -m "Release 0.1.1"
-git tag -a 0.1.1 -m "Release 0.1.1"
+git commit -m "Release 0.1.2"
+git tag -a 0.1.2 -m "Release 0.1.2"
 ```
 
 Then push the actual repository branch and tag:
 
 ```bash
 git push origin <branch>
-git push origin 0.1.1
+git push origin 0.1.2
 ```
 
 Do not assume the branch is `master` or `main`; check with:
@@ -328,4 +372,3 @@ MIT License. See [`LICENSE`](LICENSE).
 - Open-data JSON reuse: `https://heichwaasser.lu/api/v1`
 
 The measurements belong to their publishers. This plugin only reads them for local home automation and does not redistribute them; check the publishers' terms before republishing the data.
-
